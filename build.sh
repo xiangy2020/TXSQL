@@ -421,7 +421,9 @@ if [ $optimize -eq 0 ];then
     -DGIT_COMMIT="$git_log"\
     -DAARCH64_VER="$aarch64_ver"\
     -DARCH_TYPE="$arch_type"\
-    -DCOMPILATION_COMMENT_SERVER="20221230"
+    -DCOMPILATION_COMMENT_SERVER="20221230"\
+    -DCMAKE_SHARED_LINKER_FLAGS="-lstdc++fs" \
+    -DCMAKE_CXX_STANDARD_LIBRARIES="-lstdc++fs"
 else 
   # optimize compilation with lto + pgo + bolt.
   boost_dir="${boost_dir}/boost/boost_1_77_0"
@@ -478,7 +480,9 @@ else
     -DGIT_COMMIT="$git_log"\
     -DAARCH64_VER="$aarch64_ver"\
     -DARCH_TYPE="$arch_type"\
-    -DCOMPILATION_COMMENT_SERVER="20221230"
+    -DCOMPILATION_COMMENT_SERVER="20221230"\
+    -DCMAKE_SHARED_LINKER_FLAGS="-lstdc++fs" \
+    -DCMAKE_CXX_STANDARD_LIBRARIES="-lstdc++fs" 
 fi
 
 
