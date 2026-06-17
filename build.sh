@@ -303,6 +303,7 @@ with_rocksdb=0
 jemalloc=1
 gmock_zip=""
 jobs=""
+clang=0
 
 # compilation optimization
 optimize=0
