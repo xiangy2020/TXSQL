@@ -1,0 +1,37 @@
+# =============================================================================
+# rsync-deploy 配置文件
+# 使用方法：cp references/deploy.conf.example scripts/deploy.conf，然后修改下方配置
+# 注意：deploy.conf 已加入 .gitignore，不会被提交到代码仓库
+# =============================================================================
+
+# ---- 远端服务器信息（必填）----
+
+# 远端服务器用户名
+REMOTE_USER="root"
+
+# 远端服务器 IP 或域名
+REMOTE_HOST="your-server-ip"
+
+# 远端目标路径（代码将同步到此目录）
+REMOTE_PATH="/root/your-project"
+
+# SSH 端口（默认 22，如无需修改可注释掉）
+SSH_PORT="22"
+
+# SSH 私钥路径（推荐使用密钥认证，留空则使用默认密钥 ~/.ssh/id_rsa）
+# SSH_KEY="~/.ssh/id_rsa"
+
+# ---- 本地路径配置（必填）----
+
+# 要同步的本地目录（默认为 deploy.sh 所在目录的上一级，即项目根目录）
+LOCAL_PATH=".."
+
+# ---- 自定义排除规则（可选）----
+# 多个规则用英文逗号分隔，支持通配符
+# 默认已排除: .git/ __pycache__/ *.pyc .env venv/ node_modules/ .DS_Store *.log deploy.conf
+# EXCLUDE_PATTERNS="*.sql, tmp/, build/, dist/"
+
+# ---- 同步后在远端执行的命令（可选）----
+# 同步完成后自动在远端执行，例如重启服务、安装依赖等
+# POST_SYNC_CMD="pip3 install -r requirements.txt && systemctl restart myapp"
+# POST_SYNC_CMD="bash run.sh"

@@ -262,7 +262,12 @@ inline unsigned long long int my_getsystime_coarse() {
 #ifdef HAVE_CLOCK_GETTIME
   // Performance regression testing showed this to be preferable
   struct timespec tp;
+#ifdef CLOCK_REALTIME_COARSE
   clock_gettime(CLOCK_REALTIME_COARSE, &tp);
+#else
+  // macOS 不支持 CLOCK_REALTIME_COARSE，降级使用 CLOCK_REALTIME
+  clock_gettime(CLOCK_REALTIME, &tp);
+#endif
   return (static_cast<unsigned long long int>(tp.tv_sec) * 10000000 +
           static_cast<unsigned long long int>(tp.tv_nsec) / 100);
 #else

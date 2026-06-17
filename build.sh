@@ -5,7 +5,7 @@
 usage() {
 cat <<EOF
 Usage: `basename $0` [-b <boost_dir>] [-d <dest_dir>] [-s <server_suffix>] [-t debug|release]
-                     [-B 1|0] [-v 1|0] [-D 1|0|default] [-K 1|0]
+                     [-B 1|0] [-v 1|0] [-D 1|0|default] [-K 1|0] [-j <jobs>]
                      [--asan | --msan | --tsan | --ubsan] [--rocksdb]
        or
        `basename $0` [-h | --help]
@@ -45,6 +45,8 @@ Usage: `basename $0` [-b <boost_dir>] [-d <dest_dir>] [-s <server_suffix>] [-t d
   --ubsan                 Turn on UBSAN
 
   --rocksdb               Turn on Rocksdb Engin
+
+  -j                      Set the number of parallel compile jobs. Default: number of CPUs.
 
   -i                      Set git commit
 
@@ -173,6 +175,13 @@ parse_options() {
     --jemallocprof)
       with_jemalloc_prof=1
     ;;
+    -j=*)
+      jobs=`get_option_value "$1"`
+    ;;
+    -j)
+      shift
+      jobs="$1"
+    ;;
     --aarch64_ver=*)
       aarch64_ver=`get_option_value "$1"`
     ;;
@@ -294,7 +303,9 @@ tsan=0
 ubsan=0
 with_rocksdb=0
 jemalloc=1
+clang=0
 gmock_zip=""
+jobs=0  # 0 表示自动检测 CPU 核数
 
 # compilation optimization
 optimize=0
@@ -310,6 +321,11 @@ aarch64_ver=8
 arch_type=""
 
 parse_options "$@"
+
+# macOS 上禁用 jemalloc（macOS 自带内存分配器，jemalloc 在 macOS 上编译有兼容性问题）
+if [ "$(uname)" = "Darwin" ]; then
+  jemalloc=0
+fi
 
 if [ "${gmock_enable}x" == "1x" ];then
   gmock_zip="$pwd/source_downloads/googletest-release-1.10.0.zip"
@@ -337,7 +353,7 @@ else
   echo "Directory '$build_dir' exists, use it."
   # Remove the caches of cmake, to make sure it will generate files
   # into build directory.
-  rm -f CMakeCache.txt
+  rm -f "$build_dir/CMakeCache.txt"
 fi
 
 if [ ! -n "$commit_input" ]; then
@@ -421,7 +437,9 @@ if [ $optimize -eq 0 ];then
     -DGIT_COMMIT="$git_log"\
     -DAARCH64_VER="$aarch64_ver"\
     -DARCH_TYPE="$arch_type"\
-    -DCOMPILATION_COMMENT_SERVER="20221230"
+    -DCOMPILATION_COMMENT_SERVER="20221230" \
+    -DCMAKE_SHARED_LINKER_FLAGS="-lstdc++fs" \
+    -DCMAKE_CXX_STANDARD_LIBRARIES="-lstdc++fs"
 else 
   # optimize compilation with lto + pgo + bolt.
   boost_dir="${boost_dir}/boost/boost_1_77_0"
@@ -478,7 +496,9 @@ else
     -DGIT_COMMIT="$git_log"\
     -DAARCH64_VER="$aarch64_ver"\
     -DARCH_TYPE="$arch_type"\
-    -DCOMPILATION_COMMENT_SERVER="20221230"
+    -DCOMPILATION_COMMENT_SERVER="20221230" \
+    -DCMAKE_EXE_LINKER_FLAGS="-lstdc++fs"  \
+    -DCMAKE_SHARED_LINKER_FLAGS="-lstdc++fs"
 fi
 
 
@@ -486,8 +506,20 @@ check_error
 cd "$pwd"
 
 if [ x"$build_action" = x"1" ]; then
-  ncpus=`cat /proc/cpuinfo | grep -c '^processor'`
-  unbuffer make VERBOSE=1 -C $build_dir -j$ncpus 2>&1 | tee build.log
+  # 兼容 macOS 和 Linux 获取 CPU 核数
+  if [ "$jobs" -gt 0 ] 2>/dev/null; then
+    ncpus=$jobs
+  elif [ "$(uname)" = "Darwin" ]; then
+    ncpus=$(sysctl -n hw.logicalcpu)
+  else
+    ncpus=$(cat /proc/cpuinfo | grep -c '^processor')
+  fi
+  # unbuffer 在 macOS 上不可用，降级为直接执行
+  if command -v unbuffer >/dev/null 2>&1; then
+    unbuffer make VERBOSE=1 -C $build_dir -j$ncpus 2>&1 | tee build.log
+  else
+    make VERBOSE=1 -C $build_dir -j$ncpus 2>&1 | tee build.log
+  fi
 fi
 
 #end of file

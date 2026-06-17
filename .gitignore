@@ -36,3 +36,4 @@ perf.data
 perf.fdata
 build_compile_optimize.sh
 var-ps_row
+rsync-deploy/scripts/deploy.conf
