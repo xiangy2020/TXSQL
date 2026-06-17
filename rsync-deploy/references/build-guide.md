@@ -154,9 +154,131 @@ grep "lstdc++fs" build.log
 
 ---
 
-## 三、编译
+## 三、CentOS 7 devtoolset 编译器问题
 
-### 3.1 标准 Release 编译（最常用）
+### 3.1 问题描述
+
+在 CentOS 7 上执行 `./build.sh -t release` 时，出现以下报错：
+
+```
+CMake Warning at CMakeLists.txt:419 (MESSAGE):
+  Could not find devtoolset compiler/linker in /opt/rh/devtoolset-10
+
+CMake Warning at CMakeLists.txt:421 (MESSAGE):
+  You need to install the required packages:
+
+   yum install devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-binutils
+
+CMake Error at CMakeLists.txt:423 (MESSAGE):
+  Or you can set CMAKE_C_COMPILER and CMAKE_CXX_COMPILER explicitly.
+
+-- Configuring incomplete, errors occurred!
+```
+
+### 3.2 根因
+
+CentOS 7 系统自带 GCC 4.8，版本过低无法编译 MySQL 8.0。项目的 `CMakeLists.txt` 会自动检测 `/opt/rh/devtoolset-10`，若不存在则报错退出。
+
+### 3.3 解决方案
+
+**第一步：安装 devtoolset-10**
+
+```bash
+# 安装 SCL 源（如果没有）
+yum install -y centos-release-scl
+
+# 安装 devtoolset-10
+yum install -y devtoolset-10-gcc devtoolset-10-gcc-c++ devtoolset-10-binutils
+```
+
+**第二步：激活 devtoolset-10 并编译**
+
+```bash
+# 方式一：进入激活了 devtoolset-10 的子 shell，再执行编译
+scl enable devtoolset-10 bash
+./build.sh -t release
+
+# 方式二：一步到位
+scl enable devtoolset-10 './build.sh -t release'
+```
+
+> ⚠️ `scl enable` 只对当前 shell 会话生效，不会修改系统全局 GCC 版本。
+> 如需永久生效，可在 `~/.bashrc` 中加入：
+> ```bash
+> source /opt/rh/devtoolset-10/enable
+> ```
+
+### 3.4 离线安装 devtoolset-10（内网机器无 yum 源时）
+
+如果客户内网机器无法访问外网 yum 源，需要在**有网络的同架构 CentOS 7 机器**上提前打包好 RPM，再传入内网安装。
+
+#### 步骤一：在有网络的机器上下载 RPM 包
+
+```bash
+# 安装 SCL 源
+yum install -y centos-release-scl
+
+# 仅下载不安装，保存到指定目录
+mkdir -p /tmp/devtoolset10-rpms
+yum install --downloadonly --downloaddir=/tmp/devtoolset10-rpms \
+    devtoolset-10-gcc \
+    devtoolset-10-gcc-c++ \
+    devtoolset-10-binutils \
+    devtoolset-10-runtime \
+    scl-utils
+```
+
+> 如果 SCL 源域名无法解析（CentOS 7 已停止维护），先替换为阿里云镜像：
+> ```bash
+> sed -i 's|^mirrorlist=|#mirrorlist=|g' /etc/yum.repos.d/CentOS-SCLo-scl.repo
+> sed -i 's|^baseurl=.*|baseurl=https://mirrors.aliyun.com/centos/7/sclo/x86_64/sclo/|g' /etc/yum.repos.d/CentOS-SCLo-scl.repo
+> sed -i 's|^mirrorlist=|#mirrorlist=|g' /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
+> sed -i 's|^baseurl=.*|baseurl=https://mirrors.aliyun.com/centos/7/sclo/x86_64/rh/|g' /etc/yum.repos.d/CentOS-SCLo-scl-rh.repo
+> yum clean all && yum makecache
+> ```
+
+#### 步骤二：打包并传输到内网机器
+
+```bash
+# 打包
+tar -czf devtoolset10-rpms.tar.gz -C /tmp devtoolset10-rpms/
+
+# 传输到内网机器（替换为实际 IP 和路径）
+scp devtoolset10-rpms.tar.gz user@<内网IP>:/tmp/
+```
+
+#### 步骤三：在内网机器上离线安装
+
+```bash
+# 解压
+cd /tmp && tar -xzf devtoolset10-rpms.tar.gz
+
+# 离线安装（忽略依赖检查，或用 --nodeps 跳过）
+rpm -Uvh /tmp/devtoolset10-rpms/*.rpm
+
+# 如果有依赖冲突，改用 yum 本地安装（自动处理依赖顺序）
+yum localinstall /tmp/devtoolset10-rpms/*.rpm
+```
+
+#### 步骤四：激活并编译
+
+```bash
+scl enable devtoolset-10 bash
+./build.sh -t release
+```
+
+### 3.5 验证编译器版本
+
+```bash
+gcc --version
+# 期望输出：gcc (GCC) 10.x.x ...
+```
+
+---
+
+## 四、编译
+
+### 4.1 标准 Release 编译（最常用）
 
 ```bash
 cd /data/TXSQL
@@ -170,7 +292,7 @@ cd /data/TXSQL
 
 编译产物在 `bld-release/` 目录下，日志输出到 `build.log`。
 
-### 3.2 Debug 编译
+### 4.2 Debug 编译
 
 ```bash
 ./build.sh -t debug
@@ -182,7 +304,7 @@ cd /data/TXSQL
 
 编译产物在 `bld-debug/` 目录下。
 
-### 3.3 常用编译参数说明
+### 4.3 常用编译参数说明
 
 | 参数 | 说明 | 示例 |
 |------|------|------|
@@ -194,7 +316,7 @@ cd /data/TXSQL
 | `--asan` | 开启 AddressSanitizer | `--asan` |
 | `--rocksdb` | 开启 RocksDB 存储引擎 | `--rocksdb` |
 
-### 3.4 只重新 CMake（不重新编译）
+### 4.4 只重新 CMake（不重新编译）
 
 ```bash
 ./build.sh -t release -B 0
@@ -202,7 +324,7 @@ cd /data/TXSQL
 
 适合修改了 CMake 配置后，只想重新生成构建文件，不触发 make。
 
-### 3.5 增量编译（源码改动后）
+### 4.5 增量编译（源码改动后）
 
 如果只改了 C++ 源码，不需要重新跑 CMake，直接增量编译：
 
@@ -210,7 +332,7 @@ cd /data/TXSQL
 make -C bld-release -j$(nproc) 2>&1 | tee build.log
 ```
 
-### 3.6 清理重建
+### 4.6 清理重建
 
 如果遇到奇怪的编译错误，建议清理后重建：
 
@@ -221,9 +343,9 @@ rm -rf bld-release
 
 ---
 
-## 四、打包
+## 五、打包
 
-### 4.1 生成安装包（make install 方式）
+### 5.1 生成安装包（make install 方式）
 
 编译完成后，直接安装到目标目录：
 
@@ -234,7 +356,7 @@ make install
 
 默认安装到 `/usr/local/mysql`（由 `-DCMAKE_INSTALL_PREFIX` 控制）。
 
-### 4.2 指定安装目录
+### 5.2 指定安装目录
 
 ```bash
 ./build.sh -t release -d /data/mysql-install
@@ -242,7 +364,7 @@ cd bld-release
 make install
 ```
 
-### 4.3 打 tar 包（用于分发）
+### 5.3 打 tar 包（用于分发）
 
 安装完成后，把安装目录打包：
 
@@ -253,9 +375,9 @@ tar -czf txsql-8.0-$(date +%Y%m%d).tar.gz mysql/
 
 ---
 
-## 五、安装
+## 六、安装
 
-### 5.1 初始化数据目录
+### 6.1 初始化数据目录
 
 ```bash
 # 创建 mysql 用户（如果没有）
@@ -275,7 +397,7 @@ chown -R mysql:mysql /usr/local/mysql/
 
 > ⚠️ 初始化完成后，终端会输出一个**临时 root 密码**，注意保存。
 
-### 5.2 配置文件
+### 6.2 配置文件
 
 创建 `/usr/local/mysql/my.cnf`：
 
@@ -298,7 +420,7 @@ innodb_buffer_pool_size=1G
 max_connections=1000
 ```
 
-### 5.3 配置系统服务（systemd）
+### 6.3 配置系统服务（systemd）
 
 ```bash
 # 复制 service 文件
@@ -328,9 +450,9 @@ systemctl enable mysqld
 
 ---
 
-## 六、启动
+## 七、启动
 
-### 6.1 直接启动
+### 7.1 直接启动
 
 ```bash
 # 方式一：mysqld_safe（推荐，有守护进程）
@@ -344,14 +466,14 @@ systemctl enable mysqld
   --user=mysql &
 ```
 
-### 6.2 通过 systemd 启动
+### 7.2 通过 systemd 启动
 
 ```bash
 systemctl start mysqld
 systemctl status mysqld
 ```
 
-### 6.3 确认启动成功
+### 7.3 确认启动成功
 
 ```bash
 # 查看进程
@@ -364,7 +486,7 @@ ss -tlnp | grep 3306
 tail -50 /usr/local/mysql/data/mysqld.err
 ```
 
-### 6.4 首次登录修改密码
+### 7.4 首次登录修改密码
 
 ```bash
 # 使用初始化时生成的临时密码登录
@@ -375,7 +497,7 @@ ALTER USER 'root'@'localhost' IDENTIFIED BY 'your_new_password';
 FLUSH PRIVILEGES;
 ```
 
-### 6.5 停止服务
+### 7.5 停止服务
 
 ```bash
 /usr/local/mysql/bin/mysqladmin -u root -p shutdown
@@ -385,9 +507,9 @@ systemctl stop mysqld
 
 ---
 
-## 七、测试
+## 八、测试
 
-### 7.1 基本连通性测试
+### 8.1 基本连通性测试
 
 ```bash
 /usr/local/mysql/bin/mysql -u root -p -e "SELECT VERSION();"
@@ -403,13 +525,13 @@ systemctl stop mysqld
 +-----------+
 ```
 
-### 7.2 确认 server_suffix
+### 8.2 确认 server_suffix
 
 ```bash
 /usr/local/mysql/bin/mysql -u root -p -e "SELECT @@version_comment;"
 ```
 
-### 7.3 存储引擎检查
+### 8.3 存储引擎检查
 
 ```bash
 /usr/local/mysql/bin/mysql -u root -p -e "SHOW ENGINES;"
@@ -426,7 +548,7 @@ systemctl stop mysqld
 | FEDERATED | YES |
 | PERFORMANCE_SCHEMA | YES |
 
-### 7.4 基本 SQL 功能测试
+### 8.4 基本 SQL 功能测试
 
 ```bash
 /usr/local/mysql/bin/mysql -u root -p << 'EOF'
@@ -439,7 +561,7 @@ DROP DATABASE test_db;
 EOF
 ```
 
-### 7.5 单元测试（可选，需要 gmock）
+### 8.5 单元测试（可选，需要 gmock）
 
 如果编译时开启了 gmock（`-g` 参数），可以运行单元测试：
 
@@ -450,7 +572,7 @@ make test
 ctest --output-on-failure
 ```
 
-### 7.6 查看编译版本信息
+### 8.6 查看编译版本信息
 
 ```bash
 /usr/local/mysql/bin/mysqld --version
@@ -463,6 +585,7 @@ ctest --output-on-failure
 | 报错关键词 | 原因 | 解决方法 |
 |-----------|------|---------|
 | `undefined reference to 'std::filesystem::...'` | GCC < 9 缺少 `libstdc++fs` 链接（当前 GCC 8.5.0 需要加 `-lstdc++fs` 参数） | 在 `build.sh` 中加 `-DCMAKE_SHARED_LINKER_FLAGS="-lstdc++fs"` 参数 |
+| `Could not find devtoolset compiler/linker` | CentOS 7 未安装 devtoolset-10 | `yum install -y centos-release-scl && yum install -y devtoolset-10-gcc devtoolset-10-gcc-c++`，然后 `scl enable devtoolset-10 bash` |
 | `Boost directory ... not exists` | Boost 路径不对 | 检查 `boost/` 目录是否存在，或用 `-b` 指定路径 |
 | `cmake: command not found` | 没有 cmake | 安装 `cmake3`，脚本会自动优先使用 `cmake3` |
 | `ld returned 1 exit status` | 链接失败 | 查看 `build.log` 中具体的 `undefined reference` 信息 |

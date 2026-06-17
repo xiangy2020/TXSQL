@@ -167,6 +167,13 @@ parse_options() {
 	  shift
 	  commit_input=`get_key_value "$1"`
     ;;
+    -j=*)
+      jobs=`get_option_value "$1"`
+    ;;
+    -j)
+      shift
+      jobs=`get_option_value "$1"`
+    ;;
     --clang)
       clang=1
     ;;
@@ -295,6 +302,7 @@ ubsan=0
 with_rocksdb=0
 jemalloc=1
 gmock_zip=""
+jobs=""
 
 # compilation optimization
 optimize=0
@@ -490,7 +498,15 @@ check_error
 cd "$pwd"
 
 if [ x"$build_action" = x"1" ]; then
-  ncpus=`cat /proc/cpuinfo | grep -c '^processor'`
+  # 优先使用 -j 指定的线程数，否则自动检测 CPU 核数
+  if [ -n "$jobs" ] && [ "$jobs" -gt 0 ] 2>/dev/null; then
+    ncpus=$jobs
+  elif [ "$(uname)" = "Darwin" ]; then
+    ncpus=$(sysctl -n hw.logicalcpu)
+  else
+    ncpus=$(cat /proc/cpuinfo | grep -c '^processor')
+  fi
+  echo "Building with $ncpus threads..."
   unbuffer make VERBOSE=1 -C $build_dir -j$ncpus 2>&1 | tee build.log
 fi
 
